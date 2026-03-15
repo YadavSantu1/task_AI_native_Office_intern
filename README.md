@@ -105,6 +105,30 @@ SpreadsheetApp/
 | `npm run preview` | Preview the production build locally |
 | `npm run lint` | Run ESLint to check code quality |
 
+## Implemented Task Features
+
+This project implements the full intern assignment requirements.
+
+### Task 1 — Column Sort & Filter
+- Click column headers to sort (ascending → descending → none)
+- Sorting uses computed values (formulas like `=A1+B1`)
+- Each header includes a filter dropdown (Excel-style)
+- Filtering hides rows without deleting them
+- Sorting and filtering are view-layer only (data order remains unchanged)
+- Formulas always reference original cell coordinates
+
+### Task 2 — Multi‑Cell Copy & Paste (Clipboard Integration)
+- **Ctrl+C** copies computed values (supports multi‑cell selection)
+- **Ctrl+V** pastes tab-separated content from Excel / Sheets (multi-row/multi-col)
+- Supports internal copy/paste (even without clipboard access)
+- Paste actions are undoable with **Ctrl+Z**
+
+### Task 3 — Local Storage Persistence
+- Spreadsheet state is auto‑saved to local storage (debounced 500ms)
+- Restores values, formulas, styles, and grid dimensions after reload
+- Undo/redo history is not persisted (cleared on refresh)
+- Handles storage limits and corrupted data safely
+
 ## Development Workflow
 
 1. Create a new branch for your feature:

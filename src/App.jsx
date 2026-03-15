@@ -1,430 +1,523 @@
-import { useState, useRef, useCallback, useMemo } from 'react'
-import './App.css'
-import { createEngine } from './engine/core.js'
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
+import "./App.css";
+import { createEngine, sortRows, applyFilters } from "./engine/core.js";
 
-const TOTAL_ROWS = 50
-const TOTAL_COLS = 50
+const TOTAL_ROWS = 50;
+const TOTAL_COLS = 50;
 
 export default function App() {
-  // Engine instance is created once and reused across renders
-  // Note: The engine maintains its own internal state, so React state is only used for UI updates
-  const [engine] = useState(() => createEngine(TOTAL_ROWS, TOTAL_COLS))
-  const [version, setVersion] = useState(0)
-  const [selectedCell, setSelectedCell] = useState(null)
-  const [editingCell, setEditingCell] = useState(null)
-  const [editValue, setEditValue] = useState('')
-  // Cell styles are stored separately from engine data
-  // Format: { "row,col": { bold: bool, italic: bool, ... } }
-  const [cellStyles, setCellStyles] = useState({})
-  const cellInputRef = useRef(null)
+  const [engine] = useState(() => {
+    const saved = localStorage.getItem("spreadsheet_state");
+    if (!saved) return createEngine(TOTAL_ROWS, TOTAL_COLS);
 
-  const forceRerender = useCallback(() => setVersion(v => v + 1), [])
-
-  // ────── Cell style helpers ──────
-
-  const getCellStyle = useCallback((row, col) => {
-    const key = `${row},${col}`
-    return cellStyles[key] || {
-      bold: false, italic: false, underline: false,
-      bg: 'white', color: '#202124', align: 'left', fontSize: 13
-    }
-  }, [cellStyles])
-
-  const updateCellStyle = useCallback((row, col, updates) => {
-    const key = `${row},${col}`
-    setCellStyles(prev => ({
-      ...prev,
-      [key]: { ...getCellStyle(row, col), ...updates }
-    }))
-  }, [getCellStyle])
-
-  // ────── Cell editing ──────
-
-  const startEditing = useCallback((row, col) => {
-    setSelectedCell({ r: row, c: col })
-    setEditingCell({ r: row, c: col })
-    const cellData = engine.getCell(row, col)
-    setEditValue(cellData.raw)
-    setTimeout(() => cellInputRef.current?.focus(), 0)
-  }, [engine])
-
-  const commitEdit = useCallback((row, col) => {
-    // Only commit if the value actually changed to avoid unnecessary recalculations
-    const currentCell = engine.getCell(row, col)
-    if (currentCell.raw !== editValue) {
-      engine.setCell(row, col, editValue)
-      forceRerender()
-    }
-    setEditingCell(null)
-  }, [engine, editValue, forceRerender])
-
-  const handleCellClick = useCallback((row, col) => {
-    if (editingCell && (editingCell.r !== row || editingCell.c !== col)) {
-      commitEdit(editingCell.r, editingCell.c)
-    }
-    if (!editingCell || editingCell.r !== row || editingCell.c !== col) {
-      startEditing(row, col)
-    }
-  }, [editingCell, commitEdit, startEditing])
-
-  // ────── Keyboard navigation ──────
-
-  const handleKeyDown = useCallback((event, row, col) => {
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      commitEdit(row, col)
-      startEditing(Math.min(row + 1, engine.rows - 1), col)
-    } else if (event.key === 'Tab') {
-      event.preventDefault()
-      commitEdit(row, col)
-      startEditing(row, Math.min(col + 1, engine.cols - 1))
-    } else if (event.key === 'Escape') {
-      setEditValue(engine.getCell(row, col).raw)
-      setEditingCell(null)
-    } else if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      commitEdit(row, col)
-      startEditing(Math.min(row + 1, engine.rows - 1), col)
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      commitEdit(row, col)
-      startEditing(Math.max(row - 1, 0), col)
-    } else if (event.key === 'ArrowLeft') {
-      event.preventDefault()
-      commitEdit(row, col)
-      if (col > 0) {
-        startEditing(row, col - 1)
-      } else if (row > 0) {
-        startEditing(row - 1, engine.cols - 1)
+    try {
+      const data = JSON.parse(saved);
+      const rows = data.rows ?? TOTAL_ROWS;
+      const cols = data.cols ?? TOTAL_COLS;
+      const eng = createEngine(rows, cols);
+      if (Array.isArray(data.cells) && data.cells.length) {
+        eng.updateCells(
+          data.cells.map((cell) => ({ r: cell.r, c: cell.c, raw: cell.value }))
+        );
       }
-    } else if (event.key === 'ArrowRight') {
-      event.preventDefault()
-      commitEdit(row, col)
-      startEditing(row, Math.min(col + 1, engine.cols - 1))
+      return eng;
+    } catch {
+      localStorage.removeItem("spreadsheet_state");
+      return createEngine(TOTAL_ROWS, TOTAL_COLS);
     }
-  }, [engine, commitEdit, startEditing])
+  });
 
-  // ────── Formula bar handlers ──────
-
-  const handleFormulaBarKeyDown = useCallback((event) => {
-    if (!editingCell) return
-    handleKeyDown(event, editingCell.r, editingCell.c)
-  }, [editingCell, handleKeyDown])
-
-  const handleFormulaBarFocus = useCallback(() => {
-    if (selectedCell && !editingCell) {
-      setEditingCell(selectedCell)
-      setEditValue(engine.getCell(selectedCell.r, selectedCell.c).raw)
+  const [cellStyles, _setCellStyles] = useState(() => {
+    const saved = localStorage.getItem("spreadsheet_state");
+    if (!saved) return {};
+    try {
+      const data = JSON.parse(saved);
+      return data.styles || {};
+    } catch {
+      return {};
     }
-  }, [selectedCell, editingCell, engine])
+  });
 
-  const handleFormulaBarChange = useCallback((value) => {
-    if (!editingCell && selectedCell) setEditingCell(selectedCell)
-    setEditValue(value)
-  }, [editingCell, selectedCell])
+  const [version, setVersion] = useState(0);
+  const forceRerender = useCallback(() => setVersion((v) => v + 1), []);
 
-  // ────── Undo / Redo ──────
+  const [selectedCell, setSelectedCell] = useState(null);
+  const [selectionAnchor, setSelectionAnchor] = useState(null);
+  const [selectionEnd, setSelectionEnd] = useState(null);
 
-  const handleUndo = useCallback(() => { if (engine.undo()) forceRerender() }, [engine, forceRerender])
-  const handleRedo = useCallback(() => { if (engine.redo()) forceRerender() }, [engine, forceRerender])
+  const [editingCell, setEditingCell] = useState(null);
+  const [editValue, setEditValue] = useState("");
 
-  // ────── Formatting toggles ──────
+  const [sortConfig, setSortConfig] = useState({ column: null, direction: null });
+  const [filters, setFilters] = useState({});
+  const [activeFilterColumn, setActiveFilterColumn] = useState(null);
 
-  const toggleBold = useCallback(() => {
-    if (!selectedCell) return
-    const style = getCellStyle(selectedCell.r, selectedCell.c)
-    updateCellStyle(selectedCell.r, selectedCell.c, { bold: !style.bold })
-  }, [selectedCell, getCellStyle, updateCellStyle])
+  const historyRef = useRef([]);
+  const historyIndexRef = useRef(0);
+  const [, setHistoryVersion] = useState(0);
 
-  const toggleItalic = useCallback(() => {
-    if (!selectedCell) return
-    const style = getCellStyle(selectedCell.r, selectedCell.c)
-    updateCellStyle(selectedCell.r, selectedCell.c, { italic: !style.italic })
-  }, [selectedCell, getCellStyle, updateCellStyle])
+  const internalClipboardRef = useRef(null);
+  const lastCopiedInternalRef = useRef(false);
 
-  const toggleUnderline = useCallback(() => {
-    if (!selectedCell) return
-    const style = getCellStyle(selectedCell.r, selectedCell.c)
-    updateCellStyle(selectedCell.r, selectedCell.c, { underline: !style.underline })
-  }, [selectedCell, getCellStyle, updateCellStyle])
+  const cellInputRef = useRef(null);
 
-  const changeFontSize = useCallback((size) => {
-    if (!selectedCell) return
-    updateCellStyle(selectedCell.r, selectedCell.c, { fontSize: size })
-  }, [selectedCell, updateCellStyle])
+  const getSelectionRange = useCallback(() => {
+    if (!selectionAnchor || !selectionEnd) return null;
+    const startRow = Math.min(selectionAnchor.r, selectionEnd.r);
+    const endRow = Math.max(selectionAnchor.r, selectionEnd.r);
+    const startCol = Math.min(selectionAnchor.c, selectionEnd.c);
+    const endCol = Math.max(selectionAnchor.c, selectionEnd.c);
+    return { startRow, endRow, startCol, endCol };
+  }, [selectionAnchor, selectionEnd]);
 
-  const changeAlignment = useCallback((align) => {
-    if (!selectedCell) return
-    updateCellStyle(selectedCell.r, selectedCell.c, { align })
-  }, [selectedCell, updateCellStyle])
+  const isCellInSelection = (r, c) => {
+    const range = getSelectionRange();
+    if (!range) return false;
+    return (
+      r >= range.startRow &&
+      r <= range.endRow &&
+      c >= range.startCol &&
+      c <= range.endCol
+    );
+  };
 
-  const changeFontColor = useCallback((color) => {
-    if (!selectedCell) return
-    updateCellStyle(selectedCell.r, selectedCell.c, { color })
-  }, [selectedCell, updateCellStyle])
+  const pushHistory = useCallback((changes) => {
+    if (!changes || changes.length === 0) return;
+    const past = historyRef.current.slice(0, historyIndexRef.current);
+    past.push(changes);
+    historyRef.current = past;
+    historyIndexRef.current = past.length;
+    setHistoryVersion((v) => v + 1);
+  }, []);
 
-  const changeBackgroundColor = useCallback((color) => {
-    if (!selectedCell) return
-    updateCellStyle(selectedCell.r, selectedCell.c, { bg: color })
-  }, [selectedCell, updateCellStyle])
+  const applyChanges = useCallback(
+    (changes, useAfter = true) => {
+      if (!changes || changes.length === 0) return;
+      const payload = changes.map((change) => ({
+        r: change.r,
+        c: change.c,
+        raw: useAfter ? change.after : change.before,
+      }));
+      engine.updateCells(payload);
+      forceRerender();
+    },
+    [engine, forceRerender]
+  );
 
-  // ────── Clear operations ──────
+  const undo = useCallback(() => {
+    if (historyIndexRef.current === 0) return;
+    const idx = historyIndexRef.current - 1;
+    const changes = historyRef.current[idx];
+    applyChanges(changes, false);
+    historyIndexRef.current = idx;
+    setHistoryVersion((v) => v + 1);
+  }, [applyChanges]);
 
-  const clearSelectedCell = useCallback(() => {
-    if (!selectedCell) return
-    engine.setCell(selectedCell.r, selectedCell.c, '')
-    forceRerender()
-    // Remove style entry for cleared cell
-    // Note: This deletes the style object entirely - if you need to preserve default styles,
-    // you may want to set them explicitly rather than deleting
-    const key = `${selectedCell.r},${selectedCell.c}`
-    setCellStyles(prev => { const next = { ...prev }; delete next[key]; return next })
-    setEditValue('')
-  }, [selectedCell, engine, forceRerender])
+  const redo = useCallback(() => {
+    if (historyIndexRef.current >= historyRef.current.length) return;
+    const changes = historyRef.current[historyIndexRef.current];
+    applyChanges(changes, true);
+    historyIndexRef.current += 1;
+    setHistoryVersion((v) => v + 1);
+  }, [applyChanges]);
 
-  const clearAllCells = useCallback(() => {
-    for (let r = 0; r < engine.rows; r++) {
-      for (let c = 0; c < engine.cols; c++) {
-        engine.setCell(r, c, '')
-      }
-    }
-    forceRerender()
-    setCellStyles({})
-    setSelectedCell(null)
-    setEditingCell(null)
-    setEditValue('')
-  }, [engine, forceRerender])
+  const getVisibleRows = useMemo(() => {
+    // Use `version` to ensure view updates when engine content changes.
+    void version;
 
-  // ────── Row / Column operations ──────
+    const allRows = Array.from({ length: engine.rows }, (_, i) => i);
+    const filtered = applyFilters(allRows, filters, (r, c) =>
+      engine.getDisplayValue(r, c)
+    );
+    return sortRows(
+      filtered,
+      sortConfig.column,
+      sortConfig.direction,
+      (r, c) => engine.getDisplayValue(r, c)
+    );
+  }, [engine, filters, sortConfig, version]);
 
-  const insertRow = useCallback(() => {
-    if (!selectedCell) return
-    engine.insertRow(selectedCell.r)
-    forceRerender()
-    setSelectedCell({ r: selectedCell.r + 1, c: selectedCell.c })
-  }, [selectedCell, engine, forceRerender])
-
-  const deleteRow = useCallback(() => {
-    if (!selectedCell) return
-    engine.deleteRow(selectedCell.r)
-    forceRerender()
-    if (selectedCell.r >= engine.rows) {
-      setSelectedCell({ r: engine.rows - 1, c: selectedCell.c })
-    }
-  }, [selectedCell, engine, forceRerender])
-
-  const insertColumn = useCallback(() => {
-    if (!selectedCell) return
-    engine.insertColumn(selectedCell.c)
-    forceRerender()
-    setSelectedCell({ r: selectedCell.r, c: selectedCell.c + 1 })
-  }, [selectedCell, engine, forceRerender])
-
-  const deleteColumn = useCallback(() => {
-    if (!selectedCell) return
-    engine.deleteColumn(selectedCell.c)
-    forceRerender()
-    if (selectedCell.c >= engine.cols) {
-      setSelectedCell({ r: selectedCell.r, c: engine.cols - 1 })
-    }
-  }, [selectedCell, engine, forceRerender])
-
-  // ────── Derived state ──────
-
-  const selectedCellStyle = useMemo(() => {
-    return selectedCell ? getCellStyle(selectedCell.r, selectedCell.c) : null
-  }, [selectedCell, getCellStyle])
-
-  const getColumnLabel = useCallback((col) => {
-    let label = ''
-    let num = col + 1
+  const getColumnLabel = (col) => {
+    let label = "";
+    let num = col + 1;
     while (num > 0) {
-      num--
-      label = String.fromCharCode(65 + (num % 26)) + label
-      num = Math.floor(num / 26)
+      num--;
+      label = String.fromCharCode(65 + (num % 26)) + label;
+      num = Math.floor(num / 26);
     }
-    return label
-  }, [])
+    return label;
+  };
 
-  const selectedCellLabel = selectedCell
-    ? `${getColumnLabel(selectedCell.c)}${selectedCell.r + 1}`
-    : 'No cell'
+  const getFilterOptions = (col) => {
+    const values = new Set();
+    for (let r = 0; r < engine.rows; r++) {
+      values.add(String(engine.getDisplayValue(r, col)));
+    }
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  };
 
-  // Formula bar shows the raw formula text, not the computed value
-  // When editing, show the current editValue; otherwise show the cell's raw content
-  // Note: This is different from the cell display, which shows computed values
-  const formulaBarValue = editingCell
-    ? editValue
-    : (selectedCell ? engine.getCell(selectedCell.r, selectedCell.c).raw : '')
+  const toggleFilterValue = (col, value) => {
+    setFilters((prev) => {
+      const prevValues = new Set(prev[col] || []);
+      if (prevValues.has(value)) {
+        prevValues.delete(value);
+      } else {
+        prevValues.add(value);
+      }
+      return {
+        ...prev,
+        [col]: Array.from(prevValues),
+      };
+    });
+  };
 
-  // ────── Render ──────
+  const clearFilter = (col) => {
+    setFilters((prev) => {
+      const next = { ...prev };
+      delete next[col];
+      return next;
+    });
+  };
+
+  const handleSortColumn = (colIndex) => {
+    let direction = "asc";
+    if (sortConfig.column === colIndex && sortConfig.direction === "asc") {
+      direction = "desc";
+    } else if (sortConfig.column === colIndex && sortConfig.direction === "desc") {
+      direction = null;
+    }
+    setSortConfig({ column: colIndex, direction });
+  };
+
+  const startEditing = (row, col) => {
+    const cell = engine.getCell(row, col);
+    setSelectedCell({ r: row, c: col });
+    setSelectionAnchor({ r: row, c: col });
+    setSelectionEnd({ r: row, c: col });
+    setEditingCell({ r: row, c: col });
+    setEditValue(cell.raw);
+    setTimeout(() => cellInputRef.current?.focus(), 0);
+  };
+
+  const commitEdit = (row, col, value) => {
+    const cell = engine.getCell(row, col);
+    const newValue = value ?? editValue;
+    if (cell.raw !== newValue) {
+      const changes = [{ r: row, c: col, before: cell.raw, after: newValue }];
+      pushHistory(changes);
+      applyChanges(changes, true);
+    }
+    setEditingCell(null);
+  };
+
+  const handleCellClick = (row, col, event) => {
+    if (event.shiftKey && selectedCell) {
+      // Shift + click extends selection range
+      setSelectionEnd({ r: row, c: col });
+      setSelectedCell({ r: row, c: col });
+      setEditingCell(null);
+      setEditValue(engine.getCell(row, col).raw);
+      return;
+    }
+
+    // Single click enters edit mode immediately
+    startEditing(row, col);
+  };
+
+  const getSelectionData = useCallback(() => {
+    const range = getSelectionRange();
+    if (!range) return null;
+    const data = [];
+    for (let r = range.startRow; r <= range.endRow; r++) {
+      const row = [];
+      for (let c = range.startCol; c <= range.endCol; c++) {
+        row.push(engine.getDisplayValue(r, c));
+      }
+      data.push(row);
+    }
+    return data;
+  }, [engine, getSelectionRange]);
+
+  const handleCopy = useCallback(() => {
+    const selection = getSelectionData();
+    if (!selection) return;
+    const text = selection.map((row) => row.join("\t")).join("\n");
+    navigator.clipboard.writeText(text).catch(() => {});
+    internalClipboardRef.current = selection;
+    lastCopiedInternalRef.current = true;
+  }, [getSelectionData]);
+
+  const handlePaste = useCallback(
+    (event) => {
+      if (!selectedCell) return;
+
+      event.preventDefault();
+
+      const data =
+        lastCopiedInternalRef.current && internalClipboardRef.current
+          ? internalClipboardRef.current
+          : event.clipboardData
+              .getData("text")
+              .replace(/\r/g, "")
+              .split("\n")
+              .map((row) => row.split("\t"));
+
+      const changes = [];
+
+      data.forEach((row, i) => {
+        row.forEach((value, j) => {
+          const r = selectedCell.r + i;
+          const c = selectedCell.c + j;
+          if (r < engine.rows && c < engine.cols) {
+            const before = engine.getCell(r, c).raw;
+            if (before !== value) {
+              changes.push({ r, c, before, after: value });
+            }
+          }
+        });
+      });
+
+      if (changes.length) {
+        pushHistory(changes);
+        applyChanges(changes, true);
+      }
+
+      lastCopiedInternalRef.current = false;
+    },
+    [selectedCell, engine, pushHistory, applyChanges]
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        if (editingCell) {
+          // Cancel inline editing (undo the in-progress edit)
+          const original = engine.getCell(editingCell.r, editingCell.c).raw;
+          setEditValue(original);
+          setEditingCell(null);
+          return;
+        }
+        undo();
+        return;
+      }
+
+      if (e.ctrlKey && (e.key === "y" || e.key === "Y")) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
+      if (editingCell) return;
+
+      if (e.ctrlKey && (e.key === "c" || e.key === "C")) {
+        e.preventDefault();
+        handleCopy();
+      }
+    };
+
+    const handlePasteInternal = (e) => {
+      if (editingCell) return;
+      handlePaste(e);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("paste", handlePasteInternal);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("paste", handlePasteInternal);
+    };
+  }, [handleCopy, handlePaste, undo, redo, editingCell, engine]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const data = {
+        rows: engine.rows,
+        cols: engine.cols,
+        cells: [],
+        styles: cellStyles,
+      };
+
+      for (let r = 0; r < engine.rows; r++) {
+        for (let c = 0; c < engine.cols; c++) {
+          const cell = engine.getCell(r, c);
+          if (cell.raw) {
+            data.cells.push({ r, c, value: cell.raw });
+          }
+        }
+      }
+
+      try {
+        localStorage.setItem("spreadsheet_state", JSON.stringify(data));
+      } catch (err) {
+        console.warn("Unable to persist spreadsheet state", err);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [version, cellStyles, engine]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest(".filter-menu") && !e.target.closest(".filter-btn")) {
+        setActiveFilterColumn(null);
+      }
+    };
+    window.addEventListener("mousedown", handleClickOutside);
+    return () => window.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   return (
     <div className="app-wrapper">
-      <div className="app-header">
-        <h2 className="app-title">📊 Spreadsheet App</h2>
+      <h2>Spreadsheet</h2>
+
+      <div className="grid-scroll">
+        <table className="grid-table">
+          <thead>
+            <tr>
+              <th className="col-header-blank"></th>
+              {Array.from({ length: engine.cols }, (_, colIndex) => {
+                const isActive = activeFilterColumn === colIndex;
+                const filterOptions = getFilterOptions(colIndex);
+                const selectedValues = filters[colIndex] || [];
+                const sortArrow =
+                  sortConfig.column === colIndex
+                    ? sortConfig.direction === "asc"
+                      ? " ▲"
+                      : sortConfig.direction === "desc"
+                      ? " ▼"
+                      : ""
+                    : "";
+
+                return (
+                  <th
+                    key={colIndex}
+                    className="col-header"
+                    style={{ position: "relative" }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 4,
+                      }}
+                    >
+                      <span
+                        style={{ cursor: "pointer" }}
+                        onClick={() => handleSortColumn(colIndex)}
+                      >
+                        {getColumnLabel(colIndex)}{sortArrow}
+                      </span>
+                      <button
+                        type="button"
+                        className="filter-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveFilterColumn((prev) =>
+                            prev === colIndex ? null : colIndex
+                          );
+                        }}
+                        aria-label="Filter"
+                      >
+                        ⏷
+                      </button>
+                    </div>
+
+                    {isActive ? (
+                      <div className="filter-menu">
+                        <div className="filter-menu-header">
+                          <div style={{ fontWeight: 600 }}>Filter</div>
+                          <button
+                            type="button"
+                            className="toolbar-btn"
+                            onClick={() => clearFilter(colIndex)}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <div className="filter-menu-options">
+                          {filterOptions.map((opt) => {
+                            const value = opt === "" ? "(blank)" : opt;
+                            const checked = selectedValues.includes(opt);
+                            return (
+                              <label key={opt} className="filter-option">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleFilterValue(colIndex, opt)}
+                                />
+                                <span>{value}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+
+          <tbody>
+            {getVisibleRows.map((rowIndex) => (
+              <tr key={rowIndex}>
+                <td className="row-header">{rowIndex + 1}</td>
+                {Array.from({ length: engine.cols }, (_, colIndex) => {
+                  const isSelected = isCellInSelection(rowIndex, colIndex);
+                  const isEditing =
+                    editingCell?.r === rowIndex &&
+                    editingCell?.c === colIndex;
+                  const cellData = engine.getCell(rowIndex, colIndex);
+                  const displayValue =
+                    cellData.error || cellData.computed || cellData.raw || "";
+                  const cellStyle = cellStyles[`${rowIndex},${colIndex}`] || {};
+
+                  return (
+                    <td
+                      key={colIndex}
+                      className={isSelected ? "cell selected" : "cell"}
+                      style={cellStyle}
+                      onClick={(e) => handleCellClick(rowIndex, colIndex, e)}
+                      onDoubleClick={() => startEditing(rowIndex, colIndex)}
+                    >
+                      {isEditing ? (
+                        <input
+                          ref={cellInputRef}
+                          className="cell-input"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onBlur={() => commitEdit(rowIndex, colIndex)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              commitEdit(rowIndex, colIndex);
+                              setEditingCell(null);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className={
+                            "cell-display" + (cellData.error ? " error" : "")
+                          }
+                        >
+                          {displayValue}
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      <div className="main-content">
-
-        {/* ── Toolbar ── */}
-        <div className="toolbar">
-          <div className="toolbar-group">
-            <button className={`toolbar-btn bold-btn ${selectedCellStyle?.bold ? 'active' : ''}`} onClick={toggleBold} title="Bold">B</button>
-            <button className={`toolbar-btn italic-btn ${selectedCellStyle?.italic ? 'active' : ''}`} onClick={toggleItalic} title="Italic">I</button>
-            <button className={`toolbar-btn underline-btn ${selectedCellStyle?.underline ? 'active' : ''}`} onClick={toggleUnderline} title="Underline">U</button>
-          </div>
-
-          <div className="toolbar-group">
-            <span className="toolbar-label">Size:</span>
-            <select className="toolbar-select" value={selectedCellStyle?.fontSize || 13} onChange={(e) => changeFontSize(parseInt(e.target.value))}>
-              {[8, 10, 11, 12, 13, 14, 16, 18, 20, 24].map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="toolbar-group">
-            <button className={`align-btn ${selectedCellStyle?.align === 'left' ? 'active' : ''}`} onClick={() => changeAlignment('left')} title="Align Left">⬤←</button>
-            <button className={`align-btn ${selectedCellStyle?.align === 'center' ? 'active' : ''}`} onClick={() => changeAlignment('center')} title="Align Center">⬤</button>
-            <button className={`align-btn ${selectedCellStyle?.align === 'right' ? 'active' : ''}`} onClick={() => changeAlignment('right')} title="Align Right">⬤→</button>
-          </div>
-
-          <div className="toolbar-group">
-            <span className="toolbar-label">Text:</span>
-            <input
-              type="color"
-              value={selectedCellStyle?.color || '#000000'}
-              onChange={(e) => changeFontColor(e.target.value)}
-              title="Font color"
-              style={{ width: '32px', height: '32px', border: '1px solid #dadce0', cursor: 'pointer', borderRadius: '4px' }}
-            />
-          </div>
-
-          <div className="toolbar-group">
-            <span className="toolbar-label">Fill:</span>
-            <select className="toolbar-select" value={selectedCellStyle?.bg || 'white'} onChange={(e) => changeBackgroundColor(e.target.value)}>
-              <option value="white">White</option>
-              <option value="#ffff99">Yellow</option>
-              <option value="#99ffcc">Green</option>
-              <option value="#ffcccc">Red</option>
-              <option value="#cce5ff">Blue</option>
-              <option value="#e0ccff">Purple</option>
-              <option value="#ffd9b3">Orange</option>
-              <option value="#f0f0f0">Gray</option>
-            </select>
-          </div>
-
-          <div className="toolbar-group">
-            <button className="toolbar-btn" onClick={handleUndo} disabled={!engine.canUndo()} title="Undo">↶ Undo</button>
-            <button className="toolbar-btn" onClick={handleRedo} disabled={!engine.canRedo()} title="Redo">↷ Redo</button>
-          </div>
-
-          <div className="toolbar-group">
-            <button className="toolbar-btn" onClick={insertRow} title="Insert Row">+ Row</button>
-            <button className="toolbar-btn" onClick={deleteRow} title="Delete Row">- Row</button>
-            <button className="toolbar-btn" onClick={insertColumn} title="Insert Column">+ Col</button>
-            <button className="toolbar-btn" onClick={deleteColumn} title="Delete Column">- Col</button>
-          </div>
-
-          <div className="toolbar-group">
-            <button className="toolbar-btn danger" onClick={clearSelectedCell}>✕ Cell</button>
-            <button className="toolbar-btn danger" onClick={clearAllCells}>✕ All</button>
-          </div>
-        </div>
-
-        {/* ── Formula Bar ── */}
-        <div className="formula-bar">
-          <span className="formula-bar-label">{selectedCellLabel}</span>
-          <input
-            className="formula-bar-input"
-            value={formulaBarValue}
-            onChange={(e) => handleFormulaBarChange(e.target.value)}
-            onKeyDown={handleFormulaBarKeyDown}
-            onFocus={handleFormulaBarFocus}
-            placeholder="Select a cell then type, or enter a formula like =SUM(A1:A5)"
-          />
-        </div>
-
-        {/* ── Grid ── */}
-        <div className="grid-scroll">
-          <table className="grid-table">
-            <thead>
-              <tr>
-                <th className="col-header-blank"></th>
-                {Array.from({ length: engine.cols }, (_, colIndex) => (
-                  <th key={colIndex} className="col-header">
-                    {getColumnLabel(colIndex)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: engine.rows }, (_, rowIndex) => (
-                <tr key={rowIndex}>
-                  <td className="row-header">{rowIndex + 1}</td>
-                  {Array.from({ length: engine.cols }, (_, colIndex) => {
-                    const isSelected = selectedCell?.r === rowIndex && selectedCell?.c === colIndex
-                    const isEditing = editingCell?.r === rowIndex && editingCell?.c === colIndex
-                    const cellData = engine.getCell(rowIndex, colIndex)
-                    const style = cellStyles[`${rowIndex},${colIndex}`] || {}
-                    const displayValue = cellData.error
-                      ? cellData.error
-                      : (cellData.computed !== null && cellData.computed !== '' ? String(cellData.computed) : cellData.raw)
-
-                    return (
-                      <td
-                        key={colIndex}
-                        className={`cell ${isSelected ? 'selected' : ''}`}
-                        style={{ background: style.bg || 'white' }}
-                        onMouseDown={(e) => { e.preventDefault(); handleCellClick(rowIndex, colIndex) }}
-                      >
-                        {isEditing ? (
-                          <input
-                            autoFocus
-                            className="cell-input"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onBlur={() => commitEdit(rowIndex, colIndex)}
-                            onKeyDown={(e) => handleKeyDown(e, rowIndex, colIndex)}
-                            ref={isSelected ? cellInputRef : undefined}
-                            style={{
-                              fontWeight: style.bold ? 'bold' : 'normal',
-                              fontStyle: style.italic ? 'italic' : 'normal',
-                              textDecoration: style.underline ? 'underline' : 'none',
-                              color: style.color || '#202124',
-                              fontSize: (style.fontSize || 13) + 'px',
-                              textAlign: style.align || 'left',
-                              background: style.bg || 'white',
-                            }}
-                          />
-                        ) : (
-                          <div
-                            className={`cell-display align-${style.align || 'left'} ${cellData.error ? 'error' : ''}`}
-                            style={{
-                              fontWeight: style.bold ? 'bold' : 'normal',
-                              fontStyle: style.italic ? 'italic' : 'normal',
-                              textDecoration: style.underline ? 'underline' : 'none',
-                              color: cellData.error ? '#d93025' : (style.color || '#202124'),
-                              fontSize: (style.fontSize || 13) + 'px',
-                            }}
-                          >
-                            {displayValue}
-                          </div>
-                        )}
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <p className="footer-hint">
-          Click a cell to edit · Enter/Tab/Arrow keys to navigate · Formulas: =A1+B1 · =SUM(A1:A5) · =AVG(A1:A5) · =MAX(A1:A5) · =MIN(A1:A5)
-        </p>
+      <div className="footer-hint">
+        Tip: Use <b>Ctrl+C</b> and <b>Ctrl+V</b> to copy/paste. <b>Ctrl+Z</b> to undo.
       </div>
     </div>
-  )
+  );
 }
