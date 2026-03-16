@@ -115,8 +115,8 @@ npm run dev
 
 ## Demo Walkthrough
 
-👉 Loom Video Explanation:
-**[Paste your Loom video link here]**
+Loom Video Explanation:
+(https://drive.google.com/file/d/1LJWb75pwb2Sxg212WZpPijBsQ6ZF40sA/view?usp=sharing)
 
 ---
 
