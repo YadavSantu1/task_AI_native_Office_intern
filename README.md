@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # SpreadsheetApp
 
 A modern web application built with React and Vite for creating and managing spreadsheets.
@@ -175,3 +176,6 @@ This application works on all modern browsers that support ES2020+ JavaScript:
 
 
 # task_AI_native_Office_intern
+=======
+# task_AI_native_Office_intern
+>>>>>>> fe2f54cba340b28728d52acf1041cef7b4c3b674
