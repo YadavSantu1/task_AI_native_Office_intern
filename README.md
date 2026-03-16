@@ -1,181 +1,125 @@
-<<<<<<< HEAD
-# SpreadsheetApp
+# WorkElate AI-Native Office Intern Assignment
 
-A modern web application built with React and Vite for creating and managing spreadsheets.
+## Project Overview
 
-## Prerequisites
+This project is developed as part of the **WorkElate Internship Evaluation Assignment**.
+The application simulates an Excel-like spreadsheet interface where users can perform sorting, filtering, clipboard operations, and persistent data storage.
 
-Before you begin, ensure you have the following installed on your system:
+The goal of this implementation is to demonstrate **problem-solving ability, product thinking, clean architecture, and handling of real-world edge cases.**
 
-- **Node.js** (version 18 or higher) - [Download](https://nodejs.org/)
-- **npm** (comes with Node.js) or **yarn**
-- **Git** - [Download](https://git-scm.com/)
+---
 
-## Getting Started
+## Tech Stack
 
-### 1. Clone the Repository
+* React (Frontend UI)
+* Vite (Build Tool)
+* JavaScript (Core Logic)
+* CSS (Styling)
+* Browser Clipboard API
+* LocalStorage API
 
-```bash
-git clone https://github.com/tauhidst07/spreadhsheet.git
-cd SpreadsheetApp
+---
+
+## Features Implemented
+
+### Task 1 — Column Sort & Filter
+
+* Column sorting cycle: **Ascending → Descending → None**
+* Sorting works on **computed formula values**
+* Excel-style **filter dropdown in column headers**
+* Filtering hides rows without deleting original data
+* Sorting & filtering implemented at **view layer only**
+* Formulas always reference **original cell coordinates**
+
+---
+
+### Task 2 — Multi-Cell Copy & Paste
+
+* Supports **Ctrl + V** paste from Excel / Google Sheets
+* Handles **multi-row and multi-column tab-separated data**
+* Paste actions are **undoable using Ctrl + Z**
+* **Ctrl + C copies computed values**
+* Supports **internal spreadsheet copy-paste**
+
+---
+
+### Task 3 — Local Storage Persistence
+
+* Spreadsheet state **auto-saved with 500ms debounce**
+* Restores:
+
+  * Cell values
+  * Formulas
+  * Styles
+  * Grid dimensions
+* Undo / redo history **not persisted**
+* Handles:
+
+  * Storage quota limits
+  * Corrupted local storage data safely
+
+---
+
+## Architecture & Approach
+
+* A **central grid state model** manages spreadsheet data.
+* Sorting & filtering are implemented as **derived view transformations**.
+* Formula evaluation is handled through a **lightweight computation engine**.
+* Clipboard integration uses the **native browser Clipboard API**.
+* Persistence implemented via **debounced localStorage synchronization**.
+* Undo / redo handled using **state history stacks**.
+
+---
+
+## Product & UX Decisions
+
+* Column header click cycles sorting states for intuitive interaction.
+* Filter dropdown shows **unique column values** similar to Excel.
+* Multi-cell selection includes **visual highlighting**.
+* Paste behaviour mimics **real spreadsheet experience**.
+* Auto-save designed to be **non-blocking and smooth**.
+
+---
+
+## Edge Cases Handled
+
+* Sorting columns containing formula-derived values.
+* Pasting large datasets from external spreadsheet tools.
+* Undo functionality after bulk paste operations.
+* Safe recovery from **corrupted saved state**.
+* Graceful handling of **local storage size limits**.
+
+---
+
+## Setup Instructions
+
+1. Clone the repository:
+
+```
+git clone <your-repo-link>
 ```
 
-### 2. Install Dependencies
+2. Install dependencies:
 
-Install all required project dependencies:
-
-```bash
+```
 npm install
 ```
 
-Or if you prefer yarn:
+3. Run development server:
 
-```bash
-yarn install
 ```
-
-### 3. Run Development Server
-
-Start the development server with hot module replacement (HMR):
-
-```bash
 npm run dev
 ```
 
-The application will be available at `http://localhost:5173`
+---
 
-### 4. Build for Production
+## Demo Walkthrough
 
-Create an optimized production build:
+👉 Loom Video Explanation:
+**[Paste your Loom video link here]**
 
-```bash
-npm run build
-```
+---
 
-The build output will be in the `dist/` directory.
+## Conclusion
 
-### 5. Preview Production Build
-
-Preview the production build locally:
-
-```bash
-npm run preview
-```
-
-### 6. Lint Code
-
-Run ESLint to check for code quality issues:
-
-```bash
-npm run lint
-```
-
-## Project Structure
-
-```
-SpreadsheetApp/
-├── src/
-│   ├── App.jsx           # Main React component
-│   ├── App.css           # Application styles
-│   ├── main.jsx          # Application entry point
-│   ├── index.css         # Global styles
-│   ├── assets/           # Static assets (images, icons, etc.)
-│   └── engine/           # Core application logic
-│       └── core.js       # Engine core functionality
-├── public/               # Static files served as-is
-├── package.json          # Project dependencies and scripts
-├── vite.config.js        # Vite configuration
-├── eslint.config.js      # ESLint configuration
-├── index.html            # HTML entry point
-└── README.md             # This file
-```
-
-## Technologies Used
-
-- **React** - A JavaScript library for building user interfaces
-- **Vite** - A next-generation frontend build tool
-- **ESLint** - JavaScript linting utility
-- **CSS** - Styling and layout
-
-## Available Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start the development server with hot reload |
-| `npm run build` | Build the application for production |
-| `npm run preview` | Preview the production build locally |
-| `npm run lint` | Run ESLint to check code quality |
-
-## Implemented Task Features
-
-This project implements the full intern assignment requirements.
-
-### Task 1 — Column Sort & Filter
-- Click column headers to sort (ascending → descending → none)
-- Sorting uses computed values (formulas like `=A1+B1`)
-- Each header includes a filter dropdown (Excel-style)
-- Filtering hides rows without deleting them
-- Sorting and filtering are view-layer only (data order remains unchanged)
-- Formulas always reference original cell coordinates
-
-### Task 2 — Multi‑Cell Copy & Paste (Clipboard Integration)
-- **Ctrl+C** copies computed values (supports multi‑cell selection)
-- **Ctrl+V** pastes tab-separated content from Excel / Sheets (multi-row/multi-col)
-- Supports internal copy/paste (even without clipboard access)
-- Paste actions are undoable with **Ctrl+Z**
-
-### Task 3 — Local Storage Persistence
-- Spreadsheet state is auto‑saved to local storage (debounced 500ms)
-- Restores values, formulas, styles, and grid dimensions after reload
-- Undo/redo history is not persisted (cleared on refresh)
-- Handles storage limits and corrupted data safely
-
-## Development Workflow
-
-1. Create a new branch for your feature:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-2. Make your changes and ensure the code passes linting:
-   ```bash
-   npm run lint
-   ```
-
-3. Commit your changes:
-   ```bash
-   git commit -m "Add description of your changes"
-   ```
-
-4. Push to your fork and create a Pull Request
-
-## Browser Support
-
-This application works on all modern browsers that support ES2020+ JavaScript:
-
-- Chrome (latest)
-- Firefox (latest)
-- Safari (latest)
-- Edge (latest)
-
-## Troubleshooting
-
-### Dependencies won't install
-- Clear npm cache: `npm cache clean --force`
-- Delete `node_modules` and `package-lock.json`, then reinstall: `rm -rf node_modules package-lock.json && npm install`
-
-### Port 5173 already in use
-- The dev server will automatically try the next available port
-- Or specify a custom port: `npm run dev -- --port 3000`
-
-### Build fails
-- Ensure all dependencies are installed: `npm install`
-- Clear any build cache: `rm -rf dist`
-- Try rebuilding: `npm run build`
-
-
-
-# task_AI_native_Office_intern
-=======
-# task_AI_native_Office_intern
->>>>>>> fe2f54cba340b28728d52acf1041cef7b4c3b674
+This implementation focuses on building a **functional, scalable, and user-friendly spreadsheet experience**, reflecting practical product engineering decisions and robust frontend architecture.
